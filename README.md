@@ -3,7 +3,7 @@
 A Windows Server 2022 lab I built from scratch, documented as an interactive map. Every
 piece of it explains not just what I set up, but why I set it up that way.
 
-[**View the live map →**](https://YOUR-USERNAME.github.io/homelab/)
+[**View the live map →**](https://tyrese-morris.github.io/homelab/)
 
 \---
 
