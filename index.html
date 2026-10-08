@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homelab — Windows Server 2022 lab documentation</title>
+<style>
+  :root{
+    --bg:#0d1220; --panel:#151c2e; --card:#1a2338; --line:#2a3450;
+    --text:#e8ecf6; --muted:#8b96b0; --dim:#5a6580;
+    --teal:#2dd4bf; --blue:#60a5fa; --purple:#a78bfa;
+    --amber:#fbbf24; --pink:#f472b6; --green:#4ade80;
+    --cyan:#22d3ee; --orange:#fb923c; --red:#f87171; --indigo:#818cf8;
+    --slate:#94a3b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg);
+    background-image:radial-gradient(circle, #1c2540 1px, transparent 1px);
+    background-size:26px 26px;
+    color:var(--text);
+    font-family:ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height:100vh; overflow:hidden;
+  }
+  header{
+    position:fixed; top:0; left:0; right:0; z-index:10;
+    display:flex; align-items:center; gap:14px;
+    padding:14px 22px;
+    background:linear-gradient(to bottom, rgba(13,18,32,.95), rgba(13,18,32,0));
+    pointer-events:none;
+  }
+  header .logo{
+    width:34px; height:34px; border-radius:8px;
+    background:var(--panel); border:1px solid var(--line);
+    display:grid; place-items:center;
+    font-family:ui-monospace, "SF Mono", Menlo, monospace;
+    color:var(--teal); font-size:15px; font-weight:600;
+  }
+  header h1{font-size:17px; font-weight:600; letter-spacing:.2px;}
+  header .sub{
+    font-family:ui-monospace, "SF Mono", Menlo, monospace;
+    font-size:11.5px; color:var(--dim); margin-top:2px;
+  }
+  header .sub::after{content:"▊"; animation:blink 1.1s steps(1) infinite; margin-left:2px; color:var(--teal);}
+  @keyframes blink{50%{opacity:0}}
+  .hint{
+    position:fixed; bottom:14px; left:22px; z-index:10;
+    font-size:12px; color:var(--dim); pointer-events:none;
+    font-family:ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  #viewport{width:100vw; height:100vh; overflow-y:auto; overflow-x:hidden; padding:104px 32px 90px;}
+  #stage{position:relative; max-width:1060px; margin:0 auto;}
+  #wires{position:absolute; inset:0; pointer-events:none; overflow:visible;}
+  #wires path{fill:none; stroke-width:1.25px; opacity:.45;}
+
+  #rootwrap{display:flex; justify-content:center; margin:58px 0;}
+  #rootwrap .node{width:auto; min-width:300px; text-align:center;}
+  #rootwrap .node .title{justify-content:center;}
+  #topcols, #botcols{display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; align-items:start;}
+  .zonelabel{
+    display:flex; align-items:center; gap:16px;
+    font-family:ui-monospace, "SF Mono", Menlo, monospace;
+    font-size:10px; letter-spacing:2.5px; color:var(--dim);
+    font-weight:600; margin-bottom:26px;
+  }
+  .zonelabel::before, .zonelabel::after{content:""; flex:1; height:1px; background:var(--line);}
+  @media (max-width: 900px){
+    #topcols, #botcols{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width: 620px){
+    #topcols, #botcols{grid-template-columns:1fr;}
+  }
+
+  .tree{display:flex; flex-direction:column;}
+  .kids{
+    display:flex; flex-direction:column; gap:6px;
+    margin:8px 0 0 13px; padding-left:15px;
+    border-left:1px solid var(--line);
+  }
+  .kids .kids{margin-left:6px; padding-left:12px;}
+
+  .node{
+    position:relative; z-index:2;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:10px; padding:11px 14px;
+    width:100%;
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .node:hover{border-color:var(--c, var(--muted)); background:#1e2740;}
+  .node.active{border-color:var(--c, var(--muted)); box-shadow:0 0 0 1px var(--c);}
+  .node .title{display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:600;}
+  .node .led{
+    width:7px; height:7px; border-radius:50%; flex-shrink:0;
+    background:var(--c, var(--muted)); box-shadow:0 0 6px var(--c, transparent);
+  }
+  .node .title .name{flex:1; min-width:0;}
+  .node .desc{font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.45; padding-left:16px;}
+  .node .count{
+    flex-shrink:0; display:flex; align-items:center; gap:6px;
+    font-family:ui-monospace, monospace; font-size:11px; font-weight:700;
+    color:var(--c, var(--muted));
+    background:color-mix(in srgb, var(--c, #8b96b0) 16%, transparent);
+    border:1px solid color-mix(in srgb, var(--c, #8b96b0) 45%, transparent);
+    padding:3px 9px; border-radius:999px;
+    transition:background .15s, box-shadow .15s;
+  }
+  .node .count:hover{
+    background:color-mix(in srgb, var(--c, #8b96b0) 32%, transparent);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--c, #8b96b0) 15%, transparent);
+  }
+  .node .count .chev{transition:transform .2s; font-size:10px; line-height:1;}
+  .tree:not(.collapsed) > .node .count{
+    background:transparent;
+    border-color:color-mix(in srgb, var(--c, #8b96b0) 30%, transparent);
+  }
+  .tree:not(.collapsed) > .node .count .chev{transform:rotate(90deg);}
+  .node.leaf{background:var(--panel); padding:9px 12px;}
+  .node.leaf .title{font-size:12.5px; font-weight:500;}
+  .node.leaf .desc{font-size:11px; margin-top:3px;}
+  .node.root{
+    background:#111a30; border-color:var(--teal);
+    padding:18px 26px; border-radius:12px;
+  }
+  .node.root .title{font-size:17px;}
+  .node.root .desc{font-family:ui-monospace, monospace; font-size:11px; color:var(--teal); padding-left:0;}
+  .collapsed > .kids{display:none;}
+
+  #docs{
+    position:fixed; top:0; right:0; bottom:0; width:min(460px, 92vw); z-index:20;
+    background:rgba(17,23,40,.98); border-left:1px solid var(--line);
+    transform:translateX(102%); transition:transform .25s ease;
+    display:flex; flex-direction:column;
+  }
+  #docs.open{transform:translateX(0);}
+  #docs .dochead{
+    padding:20px 24px 14px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  }
+  #docs .dochead h2{font-size:17px; font-weight:600; display:flex; align-items:center; gap:9px;}
+  #docs .dochead .led{width:8px; height:8px; border-radius:50%; background:var(--dc, var(--muted)); box-shadow:0 0 7px var(--dc);}
+  #docs .dochead .path{
+    font-family:ui-monospace, monospace; font-size:11px; color:var(--dim); margin-top:5px;
+  }
+  #docs .close{
+    background:none; border:1px solid var(--line); border-radius:7px;
+    color:var(--muted); width:28px; height:28px; cursor:pointer; font-size:14px; flex-shrink:0;
+  }
+  #docs .close:hover{color:var(--text); border-color:var(--muted);}
+  #docs .docbody{overflow-y:auto; padding:20px 24px 40px; flex:1;}
+  .sec{margin-bottom:22px;}
+  .sec .label{
+    font-family:ui-monospace, monospace; font-size:10.5px; letter-spacing:1.5px;
+    color:var(--dc, var(--muted)); margin-bottom:7px; font-weight:600;
+  }
+  .sec p{font-size:13.5px; line-height:1.65; color:var(--text);}
+  .sec p + p{margin-top:8px;}
+  .sec ul{list-style:none; margin-top:2px;}
+  .sec li{
+    font-size:13px; line-height:1.55; color:var(--text);
+    padding:6px 0 6px 18px; position:relative; border-bottom:1px solid rgba(42,52,80,.5);
+  }
+  .sec li::before{content:"▸"; position:absolute; left:0; color:var(--dc, var(--muted)); font-size:11px; top:8px;}
+  .sec figure{margin-top:4px;}
+  .sec figure img{
+    width:100%; display:block; border-radius:8px;
+    border:1px solid var(--line); background:#fff;
+  }
+  .sec figure figcaption{
+    font-size:11.5px; color:var(--dim); margin-top:7px; line-height:1.5;
+  }
+  .sec figure + figure{margin-top:16px;}
+  .sec code{
+    font-family:ui-monospace, monospace; font-size:12px;
+    background:var(--card); border:1px solid var(--line);
+    padding:1px 6px; border-radius:5px; color:var(--amber);
+  }
+  .empty{color:var(--dim); font-size:13px; font-style:italic;}
+  @media (prefers-reduced-motion: reduce){
+    .sub::after{animation:none;} .node{transition:none;} #docs{transition:none;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">λ</div>
+  <div>
+    <h1>Home lab — map &amp; docs</h1>
+    <div class="sub">administrator@lab.local:~$ tree --docs</div>
+  </div>
+</header>
+<div class="hint">click the coloured ▶ badge to open a branch · click a card for the write-up</div>
+
+<div id="viewport"><div id="stage">
+  <svg id="wires"></svg>
+  <div class="zonelabel">THE ENVIRONMENT</div>
+  <div id="topcols"></div>
+  <div id="rootwrap"></div>
+  <div class="zonelabel">WHAT I DO IN IT</div>
+  <div id="botcols"></div>
+</div></div>
+
+<aside id="docs">
+  <div class="dochead">
+    <div>
+      <h2><span class="led"></span><span id="doctitle"></span></h2>
+      <div class="path" id="docpath"></div>
+    </div>
+    <button class="close" onclick="closeDocs()" aria-label="Close documentation">✕</button>
+  </div>
+  <div class="docbody" id="docbody"></div>
+</aside>
+
+<script>
+const data = {
+  title: "Home lab", desc: "lab.local · built from scratch", color: "var(--teal)",
+  doc: {
+    what: "A Windows Server 2022 environment I built from the ground up — Active Directory, DNS, DHCP, and Group Policy running on VMware, sitting behind its own physical router and managed switch.",
+    why: "I wanted to go beyond studying for certifications and actually build the things the exams talk about. Everything here exists for a reason, and for each piece I've written down not just what I did, but why I did it that way — because that's the part that sticks.",
+  },
+  children: [
+    { title: "Physical layer", desc: "Dedicated lab network segment", color: "var(--teal)",
+      doc: {
+        what: "A real, physical lab network behind its own router, kept separate from the home network: ISP gateway → router (WAN) → managed switch → workstation.",
+        why: "Putting the lab behind its own router means I can experiment with NAT, DHCP, firewall rules, and VLANs without ever knocking the household offline. The ISP gateway keeps running the home network; everything behind my router is fair game.",
+      },
+      children: [
+      { title: "ISP gateway", desc: "Uplink · 10.0.0.x",
+        doc: {
+          what: "The gateway from my internet provider. It hands my lab router a WAN address from the 10.0.0.x range.",
+          why: "I deliberately left it alone as the home network's edge. The lab lives behind a second router so nothing I break ever affects anyone else in the house.",
+        }},
+      { title: "TP-Link Archer A7", desc: "Lab router · 192.168.0.1",
+        doc: {
+          what: "An AC1750 dual-band gigabit router that I set up as the dedicated router for the lab segment.",
+          why: "I chose the Archer A7 on purpose: it has a Qualcomm chipset with solid OpenWrt and DD-WRT support, so down the road I can flash it and practice advanced routing on real hardware. For now it gives me hands-on NAT, DHCP, and routing on a device I fully control.",
+          setup: ["Connected the ISP gateway's LAN port to the Archer A7's WAN port","Logged into the admin interface at 192.168.0.1 and ran Quick Setup","Skipped MAC address cloning and set my own Wi-Fi credentials","Verified the WAN status showed Connected with a Dynamic IP"],
+        }},
+      { title: "TP-Link TL-SG108E", desc: "Managed switch · 192.168.0.2",
+        doc: {
+          what: "An 8-port gigabit managed switch that supports VLANs, QoS, port mirroring, and link aggregation.",
+          why: "I went managed instead of unmanaged because an unmanaged switch just passes traffic — there's nothing to learn from it. A managed switch lets me segment with VLANs, mirror ports for packet captures, and work with the exact features Network+ tests. I also moved its management IP to .2, because both the router and the switch ship at 192.168.0.1, and two devices on one address means you can't reliably reach either.",
+          setup: ["Connected a router LAN port to switch port 1","Logged in with the default credentials at the default IP","Changed the management IP to 192.168.0.2 under System → IP Setting","Saved and reconnected at the new address"],
+        }},
+      { title: "USB gigabit NIC", desc: "USB 3.0 Ethernet adapter",
+        doc: {
+          what: "A USB 3.0 gigabit Ethernet adapter for my workstation.",
+          why: "It gives the machine a dedicated wired interface into the lab segment, so I can keep lab connectivity and regular connectivity cleanly separated at the hardware level.",
+        }},
+    ]},
+    { title: "Virtual layer", desc: "VMware Workstation Pro", color: "var(--blue)",
+      doc: {
+        what: "The virtualized half of the lab: VMware Workstation Pro running on my Windows host, with the domain controller VM on a NAT network.",
+        why: "I picked VMware over VirtualBox deliberately. VMware is what enterprises actually run in production (vSphere/ESXi), and the concepts — virtual networking, snapshots, VM management — transfer directly. It's also free for personal use now, so there was no downside.",
+      },
+      children: [
+      { title: "Snapshot discipline", desc: "Roll back anything, instantly",
+        doc: {
+          what: "A habit I built into the whole project: take a snapshot before every major change, with a clear name for each milestone.",
+          why: "Snapshots are the single most useful feature of a lab hypervisor. If a configuration goes sideways, I roll back in seconds instead of reinstalling for hours. It's the same practice enterprise teams use before patching production servers — I just started doing it on day one.",
+          setup: ["Snapshot: clean install — right after the OS, before any config","Snapshot: VMware Tools installed","Snapshot: AD and DNS configured","Snapshot: AD, DNS and DHCP configured","Snapshot: OU structure complete"],
+        }},
+      { title: "LAB-DC01", desc: "Windows Server 2022 · 4GB / 2vCPU / 60GB",
+        doc: {
+          what: "A Windows Server 2022 Standard (Desktop Experience) VM that I installed manually, renamed to LAB-DC01, and promoted to domain controller for lab.local.",
+          why: "Standard edition covers everything a lab needs — Datacenter is built for heavily virtualized enterprises. I kept the Desktop Experience GUI because when you're learning a concept for the first time, seeing it beats memorizing commands. And the name follows real naming conventions: LAB for the environment, DC for the role, 01 for the instance — anyone can read what this server does at a glance, which is exactly what good documentation culture looks like.",
+          setup: ["Booted from the ISO and chose Standard with Desktop Experience","Did a custom install to the unallocated drive","Set a strong Administrator password and stored it securely","Renamed the server to LAB-DC01 and restarted","Installed VMware Tools for proper resolution, mouse capture and clipboard"],
+        }},
+      { title: "Static IP", desc: "192.168.1.100 · DNS points to itself",
+        doc: {
+          what: "A fixed address for the server: 192.168.1.100, mask 255.255.255.0, gateway 192.168.1.1, with DNS pointing at itself.",
+          why: "A server that provides DNS, DHCP and AD has to be findable at a constant address. If its IP ever changed, every client pointing at it would lose the domain in one shot. The rule of thumb I follow: servers and infrastructure get static IPs, workstations get DHCP. DNS points at itself because this server IS the DNS server — and I later learned to leave the alternate blank rather than adding a public resolver, since a public server can't answer for lab.local and produces confusing partial failures when the local service is the one having trouble.",
+          setup: ["Opened the adapter's IPv4 properties","Entered the static address, mask and gateway","Set preferred DNS to the server's own address, with no public alternate","Configured the DNS service's forwarder separately, which is the correct place for external resolution"],
+        }},
+      { title: "Active Directory", desc: "AD DS · domain lab.local",
+        doc: {
+          what: "Active Directory Domain Services — installed as a role, then activated by promoting the server into a new forest called lab.local.",
+          why: "AD is the backbone of nearly every enterprise Windows environment: one set of credentials that works everywhere, central control over who can access what, and policy enforcement through GPO. Almost every account ticket a helpdesk touches — resets, lockouts, access issues — runs through it. One thing I learned building this: installing the role does nothing by itself. Promotion is the step that actually creates the domain and makes the server the authority.",
+          setup: ["Server Manager → Add Roles and Features → Active Directory Domain Services","Clicked the yellow flag → promote this server to a domain controller","Chose 'Add a new forest' with root domain lab.local","Kept the DNS Server box checked and set the DSRM recovery password","Let it restart, then logged in as LAB\\Administrator"],
+        }},
+      { title: "DNS", desc: "Installed with the promotion",
+        doc: {
+          what: "The DNS Server role, which installed automatically when I promoted the domain controller.",
+          why: "This one surprised me at first: AD depends completely on DNS. When a client joins the domain or a user signs in, the client literally asks DNS 'where is the domain controller for lab.local?' If DNS can't answer, AD is unreachable. That's why Microsoft bundles DNS into the promotion — the two can't function apart.",
+        }},
+      { title: "DHCP", desc: "Scope 192.168.1.100–200",
+        doc: {
+          what: "The DHCP Server role with a scope I named 'Lab Network': addresses 192.168.1.100–200, pointing clients at the gateway and at the DC for DNS, with 8-day leases.",
+          why: "DHCP is what makes networks self-service — a device joins, broadcasts a discovery, and gets a full lease back. I sized the scope at .100–.200 deliberately so addresses 1–99 stay free for static infrastructure, which keeps dynamic and static devices from ever colliding (the DC sits at .10, well outside the pool). I also learned why AD authorization exists for DHCP: it stops a rogue DHCP server from handing out bad configs to clients, which is a genuine security concern in real environments.",
+          setup: ["Add Roles and Features → DHCP Server","Completed the post-install wizard and authorized the server in AD","Created the scope in DHCP Manager and set the range and options","Activated the scope and confirmed leases were being offered"],
+        }},
+      { title: "Group Policy", desc: "Enforced wallpaper, OU-scoped",
+        doc: {
+          what: "Group Policy pushes settings to users and computers across the whole domain. My first GPO enforces a desktop wallpaper, linked to a specific OU.",
+          why: "Without GPO you'd configure every setting on every machine by hand. With it, you set something once and it applies to everything in the linked OU — security baselines, mapped drives, software, restrictions. It's how organizations guarantee every workstation meets a standard without trusting each individual machine. Along the way I also got clear on the split: Computer Configuration applies to the machine no matter who logs in; User Configuration follows the person to any machine.",
+          setup: ["Shared a folder for the wallpaper and gave Everyone read at the share level, Authenticated Users read on NTFS","Referenced the image by UNC path, not a local C:\\ path — a local path only resolves on the machine that has the folder","Created the GPO in Group Policy Management, then edited User Configuration → Administrative Templates → Desktop → Desktop → Desktop Wallpaper","Set it Enabled with the full UNC path and style Fill","Linked it to the target OU, then gpupdate /force and a fresh logon"],
+          shots: [
+            {src:"images/gpo-wallpaper-policy.png", cap:"The policy pointed at a UNC path. The help text on the right is worth reading — it names the only two supported formats, which is the detail that explains a bug I'd misdiagnosed the first time around."},
+          ],
+        }},
+      { title: "LL-Worker", desc: "Windows 11 domain client",
+        doc: {
+          what: "A Windows 11 Enterprise VM joined to lab.local, pulling its address from pfSense and authenticating against the domain controller.",
+          why: "Until I built this, the domain had no members. Group Policy applied to nothing, I couldn't see a policy land from a user's point of view, and I couldn't test anything the way a real user would experience it. The client is what turned a set of running services into an actual environment — and joining it surfaced a DNS problem I'd never have found otherwise.",
+          setup: ["Built the VM on the same host-only network as the DC, not NAT","Used the Enterprise evaluation edition — Home cannot join a domain at all","Verified the client could ping the DC by IP before trying anything else","Fixed DNS so the client was asking the DC instead of pfSense","Confirmed nslookup lab.local resolved, then joined via System Properties → Change","Authenticated as LAB\\Administrator, rebooted, and signed in as a domain user"],
+          shots: [
+            {src:"images/domain-join-signin.png", cap:"The proof it worked: 'Sign in to: LAB' only appears on a domain-joined machine. The password prompt is the account's must-change-at-next-logon flag doing its job."},
+          ],
+        }},
+    ]},
+    { title: "Group Policy lab", desc: "Precedence, scoping, diagnostics", color: "var(--indigo)",
+      doc: {
+        what: "Going deeper on Group Policy than 'make a setting apply' — how policies resolve when several of them touch the same thing, why one sometimes reaches nobody at all, and how to prove what actually happened.",
+        why: "Real environments never have one policy. There's a domain-wide baseline, a departmental policy, and some site-specific exception, all landing on the same machine. When someone reports the wrong setting, the question is never 'is Group Policy broken' — it's 'which GPO won, and why.' That's the skill worth having.",
+      },
+      children: [
+      { title: "Precedence", desc: "LSDOU · closest wins",
+        doc: {
+          what: "Policies process in a fixed order — Local, then Site, then Domain, then OU, with parent OUs before child OUs. Whatever processes last overwrites what came before, so the GPO closest to the object wins.",
+          why: "Once you see it as an ordered stack rather than a pile, conflicts stop being mysterious. The piece that trips people up is link order: when several GPOs sit on the same container, link order 1 has the highest precedence, because they're processed in reverse and number 1 lands last. Most people assume 1 means weakest.",
+          setup: ["Made three wallpapers labeled DOMAIN, PARENT OU and CHILD OU so the desktop announces which GPO won","Created one GPO per level, each pointing at its own image","Linked them at the domain root, a parent OU and a child OU","Logged in as a user in the child OU and noted which image appeared","Unlinked one level at a time to watch the winner move up the chain"],
+          shots: [
+            {src:"images/gpo-wallpaper-applied.png", cap:"The first one landing on a domain client. A labeled wallpaper means the desktop itself reports which GPO won, so the precedence result is readable at a glance instead of buried in a report."},
+          ],
+        }},
+      { title: "Group Policy Modeling", desc: "Simulate without applying",
+        doc: {
+          what: "A GPMC wizard that calculates what policy a given user on a given computer would receive, without touching anything.",
+          why: "I found this while working around having no client, and it turned out to be more than a workaround. It answers 'what happens if I move this user to that OU' before you move them, which is exactly the question that comes up in a real change request. The Alternate Active Directory Paths step lets you simulate the object in a different OU entirely — the precedence lab in a single dialog.",
+        }},
+      { title: "gpresult", desc: "Two halves, read both",
+        doc: {
+          what: "The command that reports what Group Policy actually did on a machine. gpresult /r prints a summary; gpresult /h writes a full HTML report naming which GPO supplied every setting.",
+          why: "The detail that matters: the output has a COMPUTER SETTINGS half and a USER SETTINGS half, and they're completely independent. A machine can be fully policied while the signed-in user receives nothing at all. When someone says 'group policy isn't working,' the first question is which half — and I only really understood that after seeing a report where the computer side applied two GPOs and the user side said N/A.",
+          setup: ["gpresult /r for the quick summary, including the 'not applied' list and the reason each was filtered","gpresult /h report.html for the full per-setting breakdown","Check the distinguished name at the top of each half — it tells you where the object actually lives"],
+          shots: [
+            {src:"images/gpresult-no-user-policy.png", cap:"The user half of a report with nothing in it. The distinguished name at the top is the whole answer — CN=Users is a container, so no OU-linked policy could ever reach this account."},
+          ],
+        }},
+    ]},
+    { title: "Shares & permissions", desc: "Two layers, most restrictive wins", color: "var(--slate)",
+      doc: {
+        what: "Department file shares on the domain controller — Finance, HR and IT — with access controlled by Active Directory security groups.",
+        why: "File share access is one of the most common things a sysadmin configures and one of the most common things users complain about. Getting it right means understanding that two separate permission systems are stacked on top of each other, and that the one people forget is usually the one causing the problem.",
+      },
+      children: [
+      { title: "Share vs NTFS", desc: "Two systems, both apply",
+        doc: {
+          what: "Share permissions apply only to network access and offer three coarse levels. NTFS permissions live on the filesystem, apply locally and over the network both, and are granular. When someone connects over the network, the effective permission is the more restrictive of the two.",
+          why: "This is where most access problems come from — somebody sets one layer, forgets the other exists, and then can't explain why a user with Full Control still can't write. The approach I settled on is the one most shops use: set the share permission wide open to Authenticated Users and let NTFS do all the real gating. One list to audit instead of two, and NTFS is both more granular and effective locally.",
+          setup: ["Share permission: Authenticated Users, Full Control","NTFS: the specific security group, Modify","Modify rather than Full Control for users — Full Control lets them change permissions and take ownership"],
+        }},
+      { title: "Breaking inheritance", desc: "The step that does the securing",
+        doc: {
+          what: "Folders inherit permissions from their parent by default. A new folder under C:\\ inherits the Users group's read access, which includes every domain account.",
+          why: "This is the part that catches people. Adding Finance-Users to a folder doesn't secure it — the inherited Users entry is still sitting there granting read to the whole company. The actual security step is removing that entry, which means breaking inheritance first. Adding a permission and removing one are different operations, and only the second one locks anything down.",
+          setup: ["Properties → Security → Advanced → Disable inheritance","Choose 'Convert inherited permissions into explicit permissions' so you don't lock yourself out","Remove the Users entry","Leave SYSTEM and Administrators at Full Control — removing those is how people lose access to their own folders","Add the department group with Modify"],
+        }},
+      { title: "The access token", desc: "Why group changes need a logoff",
+        doc: {
+          what: "At sign-in, Windows builds an access token containing the user's SID and the SID of every group they belong to at that moment. The token is a snapshot and never updates during the session.",
+          why: "Add someone to a group at 10am and their 8am token has no idea. They hit the share, Windows checks the token, the group isn't there, access denied — while the directory and the folder permissions are both perfectly correct. The distinction worth knowing: a user added to a group only needs to sign out and back in, because that rebuilds the user token. A full restart is only required when the computer account is added to a group, since the machine builds its own token at boot. Helpdesks say 'restart' because it covers both cases in one instruction.",
+        }},
+    ]},
+    { title: "OU structure", desc: "Containers + first users", color: "var(--purple)",
+      doc: {
+        what: "Organizational Units — the containers inside Active Directory that group users, computers and groups into a hierarchy.",
+        why: "OUs do two jobs at once: they keep the directory organized so you can find and manage objects fast, and they're what GPOs link to, so structure directly controls which policies hit which people. Real organizations build OUs around locations, departments, or business units — the structure matters more than the names, and understanding it makes access issues much faster to trace.",
+        setup: ["Active Directory Users and Computers → right-click the domain → New → Organizational Unit","Right-click an OU → New → User → set the logon name and password"],
+      },
+      children: [
+      { title: "Themed practice OUs", desc: "Nested under a parent OU",
+        doc: {
+          what: "A parent OU called Planets holding four child OUs — Earth, Mars, Moon and Sun — each with its own test users. They started flat at the domain root and were nested later.",
+          why: "I themed them on purpose — memorable names made the hierarchy stick while I was learning, and the mechanics are identical whatever you call them. The restructure mattered more than the names. Flat OUs sitting at the domain root give you only two levels of policy, domain then OU, which isn't enough to demonstrate inheritance. Nesting them under a parent added the third level and made the precedence lab possible. Worth knowing the distinction the tree makes visible too: Builtin, Computers and Users are containers Windows creates and you can't link a GPO to any of them, while an OU is something you create and can target.",
+          setup: ["Created a parent OU, then moved the four existing OUs into it","Moving an OU carries its linked GPOs with it — the link is stored on the OU, not on the GPO, so nothing needed relinking","Had to clear 'Protect object from accidental deletion' first, since it blocks moves as well as deletes","That tickbox is hidden until Advanced Features is turned on in the ADUC View menu"],
+          shots: [
+            {src:"images/ad-ou-structure.png", cap:"The lab.local tree before the restructure, with the four OUs still flat at the domain root. The icons are the thing to notice — they're how you tell a targetable OU from a plain container like Builtin or Users."},
+            {src:"images/ad-ou-user.png", cap:"Inside one of the OUs, with its test user. This is the level a GPO gets linked at, and the container a real account would live in."},
+          ],
+        }},
+      { title: "Everyday AD tasks", desc: "The tickets I practiced",
+        doc: {
+          what: "The bread-and-butter AD operations I've drilled in this lab — the exact tasks that make up most account-related tickets.",
+          why: "These are the moves I want to be automatic, not something I look up: they're the fastest way to be useful on a real support queue from day one.",
+          setup: ["Reset a password and require a change at next logon","Unlock a locked-out account from the Account tab","Disable and re-enable accounts","Move users between OUs","Add users to security groups"],
+        }},
+    ]},
+    { title: "VLAN lab", desc: "Segmenting the switch · 802.1Q", color: "var(--cyan)",
+      doc: {
+        what: "Splitting the physical switch into separate logical networks — VLANs — so different kinds of traffic can't touch each other even though they share the same hardware.",
+        why: "VLANs are how real networks separate departments, isolate guest traffic, and enforce security boundaries without buying more switches. Devices on different VLANs can't communicate at all unless a Layer 3 device routes between them — that's the whole point. In regulated industries like healthcare, this kind of segmentation is a compliance requirement, not a nice-to-have.",
+      },
+      children: [
+      { title: "802.1Q tagging", desc: "How trunks carry many VLANs",
+        doc: {
+          what: "The standard for carrying multiple VLANs across a single link. The switch inserts a 4-byte tag into each Ethernet frame naming its VLAN; the receiving switch reads the tag, delivers the frame to the right VLAN, and strips the tag before it reaches the end device.",
+          why: "The analogy that made it click for me: luggage tags at an airport. The trunk port is the conveyor belt carrying everyone's bags, and the tag tells the handler which carousel each bag belongs on. PCs and printers never see the tags — only the network infrastructure handles them.",
+        }},
+      { title: "Access vs trunk ports", desc: "One VLAN vs many",
+        doc: {
+          what: "An access port carries exactly one VLAN and speaks untagged frames — it's for end devices that don't understand tags, and its PVID decides which VLAN those devices land in. A trunk port carries many VLANs at once using 802.1Q tags — it's for uplinks between switches and routers.",
+          why: "Getting this distinction solid matters because most 'user can't reach the network' VLAN problems come down to a port in the wrong mode or with the wrong PVID. I learned that one firsthand — it's in the troubleshooting log.",
+        }},
+      { title: "My VLAN structure", desc: "VLANs 1 · 10 · 20 · 30",
+        doc: {
+          what: "Four VLANs on the managed switch: 1 (default/native, untagged), 10 (Management — switch and infrastructure), 20 (Lab — lab devices), 30 (Guest — isolated guest traffic). Port 1 is the tagged trunk up to the router; ports 2, 3 and 4 are untagged access ports for VLANs 10, 20 and 30; ports 5–8 stay on the default VLAN.",
+          why: "I modeled it on how a real network splits traffic: management kept apart from users, guests isolated from everything else. Building it on real hardware instead of a simulator meant every mistake had a visible consequence — which is where the actual learning came from.",
+          setup: ["Enabled 802.1Q VLAN mode on the switch","Created VLANs 10, 20 and 30 — each with Port 1 tagged and its own access port untagged","Set the PVID on each access port to match its VLAN","Left Port 1 and Ports 5–8 on PVID 1"],
+          shots: [
+            {src:"images/vlan-802.1q-table.png", cap:"All four VLANs on the switch. Port 1 appears as a tagged member of every VLAN — that's the trunk — while each access port is untagged in exactly one."},
+            {src:"images/vlan-pvid-assignments.png", cap:"PVID per port. This is what decides where an untagged frame lands when it enters the switch, and it's the first thing to check when a port can't reach the network."},
+          ],
+        }},
+      { title: "Inter-VLAN routing", desc: "Next step: router on a stick",
+        doc: {
+          what: "Routing traffic between VLANs with a Layer 3 device — either a router with one subinterface per VLAN ('router on a stick') or a Layer 3 switch using SVIs.",
+          why: "By design, VLANs can't talk to each other at Layer 2 — I proved that the hard way when I stranded my own workstation. The next build step is giving the router VLAN subinterfaces so the segments can communicate in a controlled way instead of not at all.",
+        }},
+    ]},
+    { title: "Wireshark labs", desc: "The network at packet level", color: "var(--orange)",
+      doc: {
+        what: "Packet capture labs on the physical lab segment using Wireshark, the industry-standard protocol analyzer, with Npcap handling capture on Windows.",
+        why: "Reading about protocols is one thing; watching the actual packets is another. Every capture shows all the layers of a real frame at once — Ethernet header, IP header, transport, payload — which turned the OSI model from a diagram I memorized into something I can point at.",
+      },
+      children: [
+      { title: "OSI layers in a frame", desc: "The model, live",
+        doc: {
+          what: "Every captured packet expands into its layers in the detail pane: Frame (physical — size, time, interface), Ethernet II (Layer 2 — MAC addresses), IPv4 (Layer 3 — IPs and TTL), and the transport or application protocol on top.",
+          why: "Wireshark captures at Layer 2, but each frame it grabs contains everything stacked above it. Clicking through a single ping packet and finding every OSI layer inside taught me more than any chart ever did.",
+        }},
+      { title: "ICMP ping capture", desc: "Echo request / reply · TTL",
+        doc: {
+          what: "Captured live ping traffic from my workstation to 8.8.8.8 — Echo requests going out, Echo replies coming back, 74 bytes each.",
+          why: "The detail that stuck with me was TTL. My requests left with TTL 128 (the Windows default) and the replies arrived showing 114 — every router hop along the way decrements it by one, so the difference is a built-in hop counter. TTL exists so a lost packet dies instead of looping forever, and it's the mechanism traceroute is built on.",
+          ran: ["Started a capture on the Ethernet interface","Applied the icmp filter","Ran ping 8.8.8.8 from the command line","Matched each request to its reply and compared the TTL values"],
+          shots: [
+            {src:"images/wireshark-icmp-ttl.png", cap:"Echo requests leaving at TTL 128 and replies coming back at 114 — the 14-hop gap is visible right in the packet list."},
+          ],
+        }},
+      { title: "DNS capture", desc: "Queries, forwarders, cache",
+        doc: {
+          what: "Captured DNS queries and responses: my workstation asking the router, the router forwarding upstream and returning the answer — plus a surprising amount of background DNS chatter from apps I wasn't even touching.",
+          why: "DNS runs on port 53 — UDP for normal queries, TCP for large responses and zone transfers. Watching the router act as a forwarder connected home networking to what I built in the domain: same service, different scale. I also dug into the local DNS cache, because a stale cached record is one of the most common reasons 'the site won't load' even when DNS itself is fine.",
+          ran: ["Applied the dns filter","Ran a forward lookup with nslookup, then a reverse (PTR) lookup on an IP","Watched the query hit the router and the forwarded answer come back","Practiced viewing and flushing the cache with ipconfig /displaydns and /flushdns"],
+          shots: [
+            {src:"images/wireshark-dns-query.png", cap:"Queries going out to the router and responses coming back — plus background lookups from apps running quietly in the tray."},
+          ],
+        }},
+      { title: "DHCP DORA capture", desc: "Discover · Offer · Request · ACK",
+        doc: {
+          what: "Captured the full DHCP handshake by releasing and renewing my workstation's lease: Discover, Offer, Request, Acknowledge.",
+          why: "The capture made the strange parts make sense. The client's source IP is 0.0.0.0 on Discover and Request because it doesn't have an address yet, and everything goes to 255.255.255.255 because it doesn't know where the server is. All four packets share one Transaction ID — that's what links the conversation across broadcasts. And ports 67 and 68 were sitting right there in the detail pane, which beats flashcards.",
+          ran: ["Applied the bootp filter — DHCP rides on BOOTP, so that's the filter that catches it","Ran ipconfig /release, then ipconfig /renew from an elevated prompt","Identified all four DORA packets and traced the shared Transaction ID"],
+          shots: [
+            {src:"images/wireshark-dhcp-dora.png", cap:"Release, then Discover, Offer, Request and ACK. Note 0.0.0.0 as the source on Discover and Request, the broadcast destinations, and one Transaction ID tying the whole exchange together."},
+          ],
+        }},
+      { title: "APIPA", desc: "What 169.254.x.x means",
+        doc: {
+          what: "Automatic Private IP Addressing: when a device broadcasts a DHCP Discover and nobody answers, Windows self-assigns an address in 169.254.0.0/16 — no gateway, no internet, local segment only.",
+          why: "A 169.254 address isn't a mystery, it's a diagnosis: DHCP failed. The device can still reach other APIPA devices on its segment, but nothing beyond it.",
+          fix: ["Check that the DHCP server is up and reachable first — the most probable cause","Verify the port's VLAN assignment — the right server on the wrong VLAN can't hear the broadcast","Check the cable and physical connectivity"],
+          shots: [
+            {src:"images/apipa-dhcp-failure.png", cap:"APIPA in the wild: a 169.254 address, a 255.255.0.0 mask, and a default gateway line sitting empty. That blank gateway is the tell — nothing ever answered the DHCP broadcast."},
+          ],
+        }},
+      { title: "Filters & ports", desc: "The reference I actually use",
+        doc: {
+          what: "The Wireshark filters I reach for most — icmp, dns, bootp, http, tcp.port == 443, and ip.addr == x.x.x.x for a single host — plus the port numbers worth knowing cold.",
+          why: "Filters turn a firehose of packets into an answer. And these ports show up constantly, both in real captures and on the exam.",
+          ref: ["20/21 FTP · 22 SSH · 23 Telnet · 25 SMTP","53 DNS · 67/68 DHCP · 80 HTTP · 443 HTTPS","110 POP3 · 143 IMAP · 3389 RDP"],
+        }},
+    ]},
+    { title: "pfSense firewall lab", desc: "Stateful firewall · rules · NAT", color: "var(--red)",
+      doc: {
+        what: "pfSense CE — a free, open-source firewall and router platform built on FreeBSD — running as a VM and acting as the gateway for my lab network, with the domain controller sitting behind it.",
+        why: "This is the piece that turned my lab from a network into a defended network. pfSense gives me enterprise-grade firewalling, NAT, and logging for free, and it's what a lot of small and mid-size businesses actually run instead of a Cisco ASA or Fortinet box. Everything I touch here — stateful inspection, rule order, NAT, segmentation — is on the Network+ exam and carries straight into Security+ and security work generally. I chose CE over Plus deliberately: Plus needs a paid subscription, and every objective I care about is reachable on the free edition.",
+      },
+      children: [
+      { title: "Stateful vs stateless", desc: "Why the firewall remembers",
+        doc: {
+          what: "A stateful firewall tracks active connections and automatically permits return traffic for sessions that started inside. A stateless filter looks at each packet alone, judging only source, destination, and port, with no memory of what came before.",
+          why: "This clicked for me when I realized what it means practically: because pfSense remembers that my VM started a connection outbound, the reply is allowed back in without me writing a single rule for it. And anything arriving unsolicited — matching no existing session — gets dropped automatically. I never have to write an explicit deny for the internet at large; the state table does that work.",
+        }},
+      { title: "Rule processing order", desc: "First match wins",
+        doc: {
+          what: "Rules evaluate top to bottom on the interface where traffic enters, and the first match wins — nothing below it is even checked.",
+          why: "Rule order isn't cosmetic, it's the whole logic. A block rule sitting under a broad allow rule will never fire, because the allow matched first and evaluation stopped. The habit this builds: specific rules go above general ones, always. My LAN rule stack runs anti-lockout at the top (protecting my own GUI access), then my custom ICMP block, then the default allow-out rules underneath.",
+        }},
+      { title: "Two interfaces: WAN + LAN", desc: "A firewall needs two sides",
+        doc: {
+          what: "The VM has two virtual NICs: one on NAT that becomes the WAN interface facing the untrusted side, and one on a host-only network that becomes the LAN interface for my lab VMs.",
+          why: "A firewall by definition sits between two networks — with only one interface there's nothing to separate and nothing to filter. Getting this right is what makes the whole thing work: traffic enters one side, gets inspected against the rules, and either passes to the other side or doesn't.",
+          setup: ["Built the VM as FreeBSD 64-bit with 2GB RAM and a 20GB disk","Adapter 1 on NAT → became WAN, pulling an address by DHCP","Adapter 2 on host-only → became LAN at 192.168.1.1/24, static, with DHCP serving the lab","Chose ZFS with a GPT partition scheme and installed the free CE edition","Disconnected the ISO before rebooting, then ran the setup wizard over HTTPS from a LAN-side VM"],
+          shots: [
+            {src:"images/pfsense-lan-config.png", cap:"LAN interface set static with its own DHCP range — the lab's gateway, configured during install."},
+            {src:"images/pfsense-console-interfaces.png", cap:"Both interfaces up after boot: WAN holding a DHCP address from the untrusted side, LAN serving the lab network."},
+          ],
+        }},
+      { title: "Blocking ICMP outbound", desc: "My first firewall rule",
+        doc: {
+          what: "A rule blocking all ICMP from the LAN subnet to any destination — meaning no pinging out from inside the lab.",
+          why: "Restricting ICMP is a real policy in locked-down environments, and it's the cleanest way to prove to yourself that a rule actually does something. What I liked about testing it: blocked traffic is silently dropped, so from inside the VM it looks identical to a dead network. That's exactly the ambiguity you have to reason through on a real troubleshooting call.",
+          setup: ["Action: Block · Interface: LAN · Protocol: ICMP · Source: LAN subnet · Destination: any","Applied the change, then pinged 8.8.8.8 from the Windows Server VM — request timed out, 100% loss","Disabled the rule and pinged again — replies came straight back","Re-enabled it and confirmed the block returned"],
+        }},
+      { title: "NAT", desc: "Many private IPs, one public",
+        doc: {
+          what: "Network Address Translation rewrites private addresses to a single public-facing address on the way out. pfSense does outbound NAT automatically on the WAN interface.",
+          why: "IPv4 addresses ran short, and NAT is the workaround the whole internet runs on: my domain controller at 192.168.1.100 appears to the outside world as the firewall's WAN address. Worth knowing cold: the RFC 1918 private ranges are 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16 — and 169.254.x.x is not one of them, that's APIPA telling you DHCP failed. Outbound NAT is automatic; port forwarding is the inbound direction, letting specific outside traffic reach a specific internal host and port.",
+        }},
+      { title: "Firewall logs", desc: "Every blocked packet, live",
+        doc: {
+          what: "pfSense logs every dropped packet in real time — source, destination, protocol, interface, and the rule responsible.",
+          why: "This is the answer to 'why isn't this working?' when a firewall is involved. Instead of guessing, the log names the rule that dropped the traffic. It's also the same view a SOC analyst lives in when investigating suspicious traffic, which is a big part of why I wanted this in the lab.",
+          setup: ["Status → System Logs → Firewall to watch blocks as they happen","Cross-referenced a blocked ping against the rule that caused it"],
+          shots: [
+            {src:"images/pfsense-dashboard.png", cap:"The dashboard once everything settled: both interfaces up at gigabit, WAN on a DHCP address from the untrusted side, LAN serving the lab as its gateway."},
+          ],
+        }},
+      { title: "Ports I filter on", desc: "Allow, restrict, always block",
+        doc: {
+          what: "The ports that come up constantly when writing rules, and the posture each one deserves.",
+          why: "Rules are only as good as knowing what you're allowing. Telnet is the standout — it sends credentials in plain text, so it gets blocked every time, with SSH as the encrypted replacement.",
+          ref: ["Allow outbound: 80 HTTP · 443 HTTPS · 53 DNS","Allow on LAN: 67/68 DHCP","Restrict to management networks only: 3389 RDP","Allow for secure admin: 22 SSH","Always block: 23 Telnet — plain-text credentials"],
+        }},
+    ]},
+    { title: "Certifications", desc: "3 earned · 1 in progress", color: "var(--amber)",
+      doc: {
+        what: "The certification track this lab supports.",
+        why: "I didn't study for Network+ and then build a lab. The lab was how I studied, and I think that's why the exam went the way it did. Subnetting, DHCP leases, DNS, VLANs, NAT, stateful firewalling — I'd already configured all of it and broken most of it before I ever saw a practice question. Troubleshooting is the heaviest domain on that exam, and by the time I sat it I had a log of real failures I'd diagnosed myself. Security+ is next, and the pfSense work is already a running start on it.",
+      },
+      children: [
+      { title: "CompTIA A+", desc: "✓ Earned" },
+      { title: "Microsoft Azure", desc: "✓ Earned" },
+      { title: "Network+ (N10-009)", desc: "✓ Earned" },
+      { title: "Security+ (SY0-701)", desc: "In progress" },
+    ]},
+    { title: "Roadmap", desc: "Where the lab goes next", color: "var(--pink)",
+      doc: {
+        what: "The planned build-out, sequenced alongside my certification track.",
+        why: "Each step stacks on the one before it: hybrid identity extends the on-prem AD I already run, deeper OU and GPO work compounds with Network+ and Security+ topics, and IAM tooling turns directory fundamentals into a specialization.",
+      },
+      children: [
+      { title: "Hybrid cloud", desc: "Azure AD Connect",
+        doc: { what:"Sync lab.local identities to Microsoft Entra ID using Azure AD Connect.", why:"Hybrid identity — on-prem AD synced to the cloud — is how most real organizations operate today. Building it here connects my Azure certification to a domain I actually run." }},
+      { title: "Deeper OU / GPO work", desc: "Grows with Net+ & Sec+",
+        doc: { what:"Expand the OU hierarchy and layer in more policies: security baselines, drive mappings, restrictions.", why:"I add complexity deliberately and in step with what I'm studying, so every new policy is a concept I've just learned, made real." }},
+      { title: "IAM practice", desc: "Entra ID, Intune, Duo",
+        doc: { what:"Hands-on identity and access management: Entra ID for identity, Intune for device management, Duo for MFA.", why:"IAM is the bridge from support work into security-focused roles, and it sits directly on top of the AD fundamentals this lab is built on." }},
+      { title: "Advanced IAM certs", desc: "Okta, SailPoint, CyberArk",
+        doc: { what:"The long-term certification targets: Okta for SSO and identity, SailPoint for identity governance, CyberArk for privileged access.", why:"Privileged access and identity governance are high-demand, high-trust specialties — that's the direction this whole track points." }},
+    ]},
+    { title: "Troubleshooting log", desc: "Problems I hit and solved", color: "var(--green)",
+      doc: {
+        what: "Real issues I ran into during the build, what caused them, and how I fixed them.",
+        why: "Troubleshooting was the highest-weighted domain on the Network+ exam, and honestly it's where the real learning happened. A smooth build teaches you the steps; a broken one teaches you the system. I keep this log so every problem becomes a pattern I'll recognize next time — and a few of these I came back to later and found a deeper root cause than the one I first wrote down.",
+      },
+      children: [
+      { title: "Switch IP conflict", desc:"Router & switch both at .0.1",
+        doc: {
+          what:"After wiring in the managed switch, I couldn't reliably reach its management page — or sometimes the router's.",
+          why:"Both devices ship with the same default address, 192.168.0.1. Two devices on one IP in the same subnet is a textbook address conflict: traffic for that address goes to whichever one answers first.",
+          fix:["Changed the switch's management IP to 192.168.0.2 under System → IP Setting","Reconnected at the new address — both devices reachable ever since","Noted that a different browser helped when the switch UI returned empty responses"],
+        }},
+      { title: "GPO black wallpaper", desc:"Unsupported image format",
+        doc: {
+          what:"My wallpaper policy applied without a single error — and the desktop turned solid black instead of showing the image.",
+          why:"I first chalked this up to an extension typo, and that was only half the story. Rebuilding the policy months later I actually read the help text in the setting itself: the image has to be a bitmap (.bmp) or a JPEG (.jpg). PNG isn't a supported format for this policy at all, so it was never going to render regardless of what the path said. What made it hard to catch is that Group Policy doesn't validate the path — it hands the shell a file reference and moves on. No error, no log entry, just a black desktop.",
+          fix:["Re-read the policy's own help text, which lists the supported formats right there","Converted the image to .jpg and pointed the policy at it","Turned on file extensions in Explorer so the real filename is always visible","Switched from a local C:\\ path to a UNC path, so the image resolves from any machine instead of only the one holding the folder"],
+        }},
+      { title: "Client couldn't find the domain", desc:"DNS pointed at the firewall",
+        doc: {
+          what:"A brand-new Windows client, on the right subnet, pinging the domain controller with zero packet loss — and completely unable to resolve lab.local.",
+          why:"pfSense was handing out its own address as the DNS server, so every lookup went to the firewall. But a domain join doesn't want one A record — it hunts for a whole family of service records, _ldap and _kerberos and _gc and the rest, that Active Directory creates in its own DNS zone when you promote a DC. pfSense holds none of them and realistically never will. The successful ping is what made it obvious: connectivity was perfect, so the failure had to be name resolution and nothing else.",
+          fix:["Established the split first — ping to the DC by IP worked, nslookup lab.local did not","Queried the DC directly to prove the records lived there, then opened DNS Manager and found the _msdcs, _sites, _tcp and _udp folders","Fixed it at the source instead of on one machine: pfSense → Services → DHCP Server → LAN → DNS Servers, set to the DC","Ran ipconfig /release and /renew, confirmed the client picked up the new DNS server, then joined"],
+          shots: [
+            {src:"images/ad-dns-service-records.png", cap:"What only the DC holds: the _msdcs, _sites, _tcp and _udp folders, created automatically at promotion. This is what a domain join goes looking for, and what a firewall's resolver has no idea about."},
+            {src:"images/pfsense-dhcp-dns-option.png", cap:"The one-field fix, made at the source. Note the grey 192.168.1.1 — that's placeholder text, meaning the field was empty and pfSense had been defaulting to handing out its own address."},
+            {src:"images/dns-resolution-fixed.png", cap:"Same query that failed before, now answered by the DC. Green light to join."},
+          ],
+        }},
+      { title: "Kerberos time skew", desc:"Clock three hours off",
+        doc: {
+          what:"Group Policy failed on the client with 'Windows attempted to read the file \\\\lab.local\\sysvol\\...\\gpt.ini and was not successful.' Shares were unreachable. Every network layer tested clean.",
+          why:"The domain controller's clock had drifted about three hours from real time after repeated VM power cycles. Kerberos rejects any authentication where the two machines disagree by more than five minutes — it's replay-attack protection and there's no grace period or warning. So the client could resolve names, reach the server, and open a TCP connection, but every attempt to authenticate was refused. A domain controller is the authoritative time source for the whole domain, so when its clock is wrong, nothing in the domain can authenticate.",
+          fix:["Ruled out the network first: Test-NetConnection to the DC on port 445 returned True, so SMB was reachable","Ruled out the firewall: Get-NetConnectionProfile showed DomainAuthenticated, so file sharing wasn't being blocked","That left authentication, and the clock was visibly wrong on the DC's own taskbar","Corrected the time on the DC, ran w32tm /resync on the client, and Group Policy applied immediately","Enabled 'Synchronize guest time with host' in VMware Tools on each VM so suspend and resume stops causing drift"],
+        }},
+      { title: "Folder had permissions, no share", desc:"NTFS done, sharing skipped",
+        doc: {
+          what:"Mapping a drive failed with 'System error 67 — the network name cannot be found,' even though the folder existed on the server with correct NTFS permissions and the right group assigned.",
+          why:"Sharing a folder and setting its NTFS permissions are two separate operations, and I'd only done the second. Without the share, the folder is perfectly secured and completely invisible from the network — there's nothing at \\\\LAB-DC01\\IT for a client to connect to. The error text is the giveaway once you know to read it: 'network name cannot be found' means the share doesn't exist, where 'access denied' would mean it exists but permissions refused you. Two very different problems with very similar-sounding symptoms.",
+          fix:["Ran net share on the DC and confirmed the three folders weren't listed","Created the shares with New-SmbShare, granting Authenticated Users full access at the share layer","Left NTFS as the only thing actually gating access, as designed","Verified by mapping successfully as a member of the right group, then confirming a non-member was still refused"],
+        }},
+      { title: "VM on the wrong virtual network", desc:"IP didn't match the lab subnet",
+        doc: {
+          what:"A client could resolve nothing on the domain — no DNS, no domain controller, no Group Policy — despite the DC running normally and every service healthy.",
+          why:"The VM's network adapter had been switched from host-only to VMware NAT, so it held a 192.168.96.x address while the entire lab lives on 192.168.1.x. It wasn't failing to reach the domain controller; it was on a different network entirely, with no route between them. The DNS suffix was the second clue — VMware NAT hands out 'localdomain' where the lab hands out 'lab.local'.",
+          fix:["Ran ipconfig and read the subnet before anything else — 192.168.96.x on a machine that should be 192.168.1.x explained every downstream symptom at once","Switched the VM's adapter back to the host-only network the DC uses","Assigned a static address on the lab subnet, since the DHCP server for that segment wasn't running","Took the lesson that an IP address identifies which network a machine is on, and checking it first would have skipped the whole detour"],
+        }},
+      { title: "GPO created but never linked", desc:"Two steps, not one",
+        doc: {
+          what:"A wallpaper policy that was configured correctly, pointed at a valid file, and applied to nobody. The user was in the right OU this time, and gpresult still reported 'Applied Group Policy Objects: N/A'.",
+          why:"Creating a GPO and linking it are two separate operations. Creating it makes the policy object exist in the domain; linking attaches it to a site, domain, or OU so it actually lands on something. An unlinked GPO is a policy sitting in a drawer — fully written, connected to nothing. What made it easy to miss is that it never appeared in the 'filtered out' list either: nothing rejected it, because it was never in the running to begin with.",
+          fix:["Ran gpresult /r on the client as the affected user and confirmed N/A on the user side","Checked the distinguished name first to rule out the container problem — this time it read OU=Moon, so the account was eligible","That pointed the investigation at the GPO rather than the user","Opened the GPO's Scope tab in GPMC and found the Links box completely empty","Right-clicked the target OU → Link an Existing GPO, then gpupdate /force and a fresh logon"],
+        }},
+      { title: "GPO reached nobody", desc:"Administrator lives in a container",
+        doc: {
+          what:"A correctly configured, correctly linked GPO that applied to absolutely nothing. gpresult reported 'Applied Group Policy Objects: N/A' on the user side.",
+          why:"I was testing while signed in as Administrator, and the report gave it away in the distinguished name: CN=Administrator,CN=Users. Users is a default container, not an organizational unit — and you cannot link a GPO to a container. So an OU-linked policy can never reach an account living there. It's the same container-versus-OU distinction visible in the ADUC icons, except this time it was quietly costing me an hour.",
+          fix:["Read the distinguished name in the gpresult output instead of assuming the policy was broken","Confirmed the GPO itself was sound using Group Policy Modeling against a user who does live in an OU","Tested properly from the domain client, signed in as a real OU user rather than Administrator"],
+        }},
+      { title: "DHCP install warning", desc:"No static IP on the server",
+        doc: {
+          what:"Installing the DHCP role threw a validation warning because the server didn't have a fixed address yet.",
+          why:"It makes sense once you think about it: a DHCP server hands out addresses to everyone else, so it can't be sitting on a lease itself. It has to live at a known, permanent address.",
+          fix:["Assigned the static IP first","Re-ran the DHCP role installation cleanly","Took it as a lesson in dependency order: static IP → roles → services"],
+        }},
+      { title: "VLAN cut off my internet", desc:"Workstation stranded on VLAN 10",
+        doc: {
+          what:"Right after configuring VLANs, the workstation plugged into Port 2 (PVID 10) lost internet access completely.",
+          why:"The workstation was now on VLAN 10, but the router only speaks VLAN 1. Traffic can't cross VLANs at Layer 2 — that takes inter-VLAN routing, which the switch alone can't do. The best part: the segmentation was working exactly as designed. I had successfully segmented myself away from my own gateway.",
+          fix:["Moved the workstation's cable to Port 5, which sits on VLAN 1 with the router","Internet came back immediately","Filed it as the classic exam scenario — 'user moved desks and lost the network' — always check the port's VLAN and PVID first"],
+        }},
+      { title: "Two DHCP servers, one segment", desc:"VMware outraced pfSense",
+        doc: {
+          what:"After standing up pfSense, my Windows Server VM pulled an address from the wrong range entirely and came up with a blank default gateway — which meant I couldn't reach the pfSense GUI at all.",
+          why:"VMware runs its own DHCP service on host-only networks, completely independently of anything inside my VMs. So two DHCP servers were answering on the same segment, and VMware simply replied first. This is textbook rogue DHCP behavior — the real-world version isn't a hypervisor, it's someone plugging a consumer router into an office wall jack, and the symptom is identical: unpredictable addressing and clients that can't route anywhere.",
+          fix:["Turned off VMware's DHCP service for that host-only network in the Virtual Network Editor","Ran ipconfig /release and ipconfig /renew inside the VM","pfSense answered this time — correct address, correct gateway, GUI reachable","Locked in the rule: one DHCP server per segment, no exceptions"],
+          shots: [
+            {src:"images/dhcp-conflict-wrong-subnet.png", cap:"The moment it broke, caught in one shot: LAB-DC01 holding an address from a subnet pfSense doesn't own, no default gateway, and the browser next to it failing to load the firewall GUI. Two servers answered; the wrong one won."},
+          ],
+        }},
+    ]},
+  ]
+};
+
+const stage = document.getElementById("stage");
+const rootwrap = document.getElementById("rootwrap");
+const topcols = document.getElementById("topcols");
+const botcols = document.getElementById("botcols");
+const wires = document.getElementById("wires");
+const docs = document.getElementById("docs");
+const links = [];
+let activeCard = null;
+
+function build(node, color, isRoot, path){
+  const wrap = document.createElement("div");
+  wrap.className = "tree";
+  const c = node.color || color;
+  const myPath = path ? path + " / " + node.title : node.title;
+
+  const card = document.createElement("div");
+  card.className = "node" + (isRoot ? " root" : (node.children ? "" : " leaf"));
+  card.style.setProperty("--c", c);
+  card.innerHTML = `<div class="title"><span class="led"></span><span class="name">${node.title}</span></div>`
+    + (node.desc ? `<div class="desc">${node.desc}</div>` : "");
+  card.addEventListener("click", () => openDocs(node, c, myPath, card));
+  wrap.appendChild(card);
+
+  if (node.children && !isRoot){
+    wrap.classList.add("collapsed");
+    const badge = document.createElement("div");
+    badge.className = "count";
+    badge.innerHTML = `<span>${node.children.length}</span><span class="chev">▶</span>`;
+    badge.title = "Expand";
+    badge.addEventListener("click", e => { e.stopPropagation(); wrap.classList.toggle("collapsed"); draw(); });
+    card.querySelector(".title").appendChild(badge);
+
+    const kids = document.createElement("div");
+    kids.className = "kids";
+    node.children.forEach(child => kids.appendChild(build(child, c, false, myPath)));
+    wrap.appendChild(kids);
+  }
+  return wrap;
+}
+
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+function openDocs(node, color, path, card){
+  if (activeCard) activeCard.classList.remove("active");
+  activeCard = card; card.classList.add("active");
+  docs.style.setProperty("--dc", color);
+  document.getElementById("doctitle").textContent = node.title;
+  document.getElementById("docpath").textContent = path;
+  const b = document.getElementById("docbody");
+  const d = node.doc;
+  if (!d){
+    b.innerHTML = `<p class="empty">No detailed notes for this node yet.</p>`;
+  } else {
+    let h = "";
+    if (d.what)  h += `<div class="sec"><div class="label">WHAT</div><p>${esc(d.what)}</p></div>`;
+    if (d.why)   h += `<div class="sec"><div class="label">WHY</div><p>${esc(d.why)}</p></div>`;
+    if (d.setup) h += `<div class="sec"><div class="label">HOW I SET IT UP</div><ul>${d.setup.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (d.ran)   h += `<div class="sec"><div class="label">HOW I RAN IT</div><ul>${d.ran.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (d.fix)   h += `<div class="sec"><div class="label">THE FIX</div><ul>${d.fix.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (d.ref)   h += `<div class="sec"><div class="label">QUICK REFERENCE</div><ul>${d.ref.map(s=>`<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (d.shots) h += `<div class="sec"><div class="label">FROM THE LAB</div>`
+      + d.shots.map(s=>`<figure><img src="${esc(s.src)}" alt="${esc(s.cap)}" loading="lazy"><figcaption>${esc(s.cap)}</figcaption></figure>`).join("")
+      + `</div>`;
+    b.innerHTML = h;
+  }
+  b.scrollTop = 0;
+  docs.classList.add("open");
+}
+
+function closeDocs(){
+  docs.classList.remove("open");
+  if (activeCard){ activeCard.classList.remove("active"); activeCard = null; }
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDocs(); });
+
+const TOP_ORDER = ["Physical layer", "Certifications", "Virtual layer"];
+const BOT_ORDER = ["VLAN lab", "pfSense firewall lab", "Wireshark labs",
+                   "Group Policy lab", "Shares & permissions", "OU structure",
+                   "Roadmap", "Troubleshooting log"];
+
+const rootOnly = Object.assign({}, data);
+delete rootOnly.children;
+const rootTree = build(rootOnly, data.color, true, "");
+rootwrap.appendChild(rootTree);
+const rootCard = rootTree.querySelector(".node");
+
+const byTitle = {};
+data.children.forEach(b => { byTitle[b.title] = b; });
+
+TOP_ORDER.forEach(title => {
+  const b = byTitle[title]; if (!b) return;
+  const t = build(b, b.color, false, data.title);
+  topcols.appendChild(t);
+  links.push({ from: t.querySelector(":scope > .node"), to: rootCard, kind: "up" });
+});
+
+BOT_ORDER.forEach(title => {
+  const b = byTitle[title]; if (!b) return;
+  const t = build(b, b.color, false, data.title);
+  botcols.appendChild(t);
+  links.push({ from: rootCard, to: t.querySelector(":scope > .node"), kind: "down" });
+});
+
+function draw(){
+  const sr = stage.getBoundingClientRect();
+  wires.setAttribute("width", stage.scrollWidth);
+  wires.setAttribute("height", stage.scrollHeight);
+  wires.innerHTML = links.map(l => {
+    const a = l.from.getBoundingClientRect(), b = l.to.getBoundingClientRect();
+    const up = l.kind === "up";
+    const branch = up ? l.from : l.to;
+    const stroke = getComputedStyle(branch).getPropertyValue("--c").trim() || "#445";
+    const x1 = a.left + a.width/2 - sr.left;
+    const y1 = up ? a.bottom - sr.top : a.bottom - sr.top;
+    const x2 = b.left + b.width/2 - sr.left;
+    const y2 = b.top - sr.top;
+    const my = (y1 + y2) / 2;
+    return `<path d="M${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}" stroke="${stroke}"/>`;
+  }).join("");
+}
+
+new ResizeObserver(draw).observe(stage);
+window.addEventListener("resize", draw);
+draw();
+</script>
+</body>
+</html>
