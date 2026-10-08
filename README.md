@@ -3,7 +3,7 @@
 A Windows Server 2022 lab I built from scratch, documented as an interactive map. Every
 piece of it explains not just what I set up, but why I set it up that way.
 
-[**View the live map →**](https://tyrese-morris.github.io/homelab/)
+[**View the live map →**](https://tyrese-morris.github.io/Homelab/)
 
 \---
 
@@ -226,7 +226,7 @@ through shows you understood it.
 No build step, no dependencies — a single self-contained HTML file.
 
 ```bash
-git clone https://github.com/tyrese-morris/homelab.git
+git clone https://github.com/tyrese-morris/Homelab.git
 cd homelab
 open index.html    # or just double-click it
 ```
