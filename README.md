@@ -93,6 +93,69 @@ Windows Server 2022 promoted to domain controller: AD DS with an integrated DNS 
 a DHCP scope authorized in the directory, organizational units, and Group Policy objects
 targeted at specific OUs.
 
+### Building the domain
+
+**Before the role goes on:** static IP assigned, server renamed to its final name, DNS
+pointing at itself. Renaming a server is trivial; renaming a domain controller afterward
+is not, so the name has to be right first.
+
+**Installing AD DS** adds the role and the management tools — ADUC, GPMC, the
+ActiveDirectory PowerShell module — and nothing else. The role sits completely inert.
+There is no domain and nothing can authenticate against the server yet.
+
+**Promotion** is the step that creates it, launched from the warning flag in Server
+Manager. The decisions it asks for:
+
+| Screen | Choice | Why |
+| --- | --- | --- |
+| Deployment configuration | Add a new forest · `lab.local` | A new forest builds a directory from nothing; the other options join one that exists |
+| DC options | DNS checked, Global Catalog forced on | The first DC in a forest *must* be a GC, and RODC needs a writable DC to exist first |
+| DSRM password | Set, and stored separately | Directory Services Restore Mode is offline recovery — you need it when the directory itself is what's broken |
+| DNS delegation warning | Pass | A delegation points a parent zone at this one; `lab.local` has no parent |
+| NetBIOS name | `LAB` | The short form behind "Sign in to: LAB" and the `LAB\username` prefix |
+| Paths | `C:\Windows\NTDS` · `C:\Windows\SYSVOL` | Two different things: the directory database queried over LDAP, and a file share that delivers Group Policy over SMB |
+
+```powershell
+Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest -DomainName "lab.local" -DomainNetbiosName "LAB" -InstallDNS
+
+# verify
+Get-ADDomain; Get-ADForest; Get-ADDomainController
+```
+
+**DNS** installs with the promotion and builds the `lab.local` zone, AD-integrated so it
+replicates with the directory rather than living in a text file. Two things the promotion
+does *not* do, and both are easy to miss: **forwarders** are unconfigured, which is where
+external resolution belongs — the DC answers for `lab.local` from its own zone and hands
+everything else upstream. And no **reverse lookup zone** is created, so `nslookup` against
+an IP returns nothing until you add one.
+
+```
+nslookup -type=SRV _ldap._tcp.dc._msdcs.lab.local    # the record a domain join looks for
+nltest /dsgetdc:lab.local                            # which DC the client found, and how
+```
+
+**DHCP** needs the static IP in place first — the role installs without one but throws a
+validation warning, because a DHCP server that can't be found at a constant address is a
+contradiction. After install, the post-deployment wizard **authorizes the server in Active
+Directory**: the DC keeps a list of authorized DHCP servers, and a domain-joined Windows
+DHCP server checks that list on startup and refuses to serve leases if it isn't on it.
+That's the built-in defense against a rogue DHCP server — which in practice means somebody
+plugging a consumer router into a wall jack.
+
+Scope design is the part worth planning. Low addresses stay out of the pool and are
+reserved for infrastructure; the pool starts above them. A static address sitting inside a
+DHCP range is a duplicate-IP conflict waiting to be handed out. Then the options, which is
+where most DHCP problems actually live:
+
+| Option | Value | Note |
+| --- | --- | --- |
+| 003 Router | the gateway | |
+| 006 DNS Servers | **the domain controller** | Not the router, not a public resolver — this is the one that broke my first domain join |
+| 015 DNS Domain Name | `lab.local` | |
+
+Precedence runs most-specific-wins: **reservation → scope → server**.
+
 The OUs started flat at the domain root, shown below, and were later nested under a parent
 OU so policy could flow through three levels instead of two. The icons are worth noticing —
 you can link a GPO to an OU you created, but not to a built-in container like Users or
