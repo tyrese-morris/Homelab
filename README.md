@@ -264,6 +264,8 @@ wrong, nothing in the domain can authenticate.
 
 |Problem|Root cause|
 |-|-|
+|DHCP service running and scope Active, but no client ever leased|Scope built on `194.168.1.0` instead of `192.168.1.0` — it never matched the server's own interface|
+|`ipconfig /release` returned "no adapter is in the state permissible"|The adapter was statically configured; there was no lease to release|
 |Workstation lost internet after VLAN config|Port moved to a VLAN the router didn't route — segmentation working exactly as designed|
 |VM pulled an address from the wrong range, no gateway|Two DHCP servers on one segment; the hypervisor's own service answered first|
 |New client couldn't locate the domain|DNS pointed at the firewall, which holds none of AD's service records|
