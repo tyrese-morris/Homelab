@@ -438,6 +438,9 @@ const data = {
             "AD grants each user Full Control of their own folder automatically — no per-user permissions are ever set by hand",
             "Home folder holds files and is a drive letter; a roaming profile holds Windows settings and becomes your profile. Different things.",
           ],
+          shots: [
+            {src:"images/home-folders-created.png", cap:"Two folders neither of which I created. Setting the path on an account is what makes the folder and grants that user full control of it — which is why pre-creating one by hand is the most common way to break a home drive. The timestamps are a second finding: they're three hours behind real time, which sent me back to the clock-drift entry in this log."},
+          ],
         }},
       { title: "The access token", desc: "Why group changes need a logoff",
         doc: {
@@ -486,6 +489,10 @@ const data = {
             "CSVDE — imports from an external system. Create only: cannot modify, cannot set passwords, so accounts arrive disabled.",
             "LDIFDE — same as CSVDE but can also modify existing objects, and the schema.",
             "The distinction that matters: a template is a snapshot, a group is a live link. Templates provision, groups control access.",
+          ],
+          shots: [
+            {src:"images/ad-template-profile.png", cap:"The template's Profile tab. The home folder path was typed with the %username% variable and has already been expanded against the template's own account — that expansion happens the moment you click Apply, and the copy operation is what substitutes each new user's name later."},
+            {src:"images/ad-template-copied.png", cap:"A user created by copying the template. Department and company are filled in and neither was typed — along with the security group membership and the home folder path. That's the whole point: the things people forget are already there."},
           ],
         }},
     ]},
@@ -619,6 +626,11 @@ const data = {
             "Test it by switching the firewall off — the domain should keep working",
             "Scope option 006 points at the DC; AD's service records exist nowhere else",
           ],
+          shots: [
+            {src:"images/vmware-network-editor.png", cap:"Clearing the ground before building anything. The host-only network's DHCP column has to read blank — the hypervisor running its own DHCP service on the same wire is what produced the original rogue-DHCP failure. The subnet also needs to match the lab's addressing rather than VMware's default, or the host sits on a different network than the VMs."},
+            {src:"images/pfsense-rebuild-console.png", cap:"The rebuild up: WAN on em0 with an address from the NAT network, LAN on em1 as the lab's gateway. The device identifier is redacted. Worth knowing what this screen does not prove — the LAN address displays correctly whatever virtual network the adapter is attached to, because it's statically assigned."},
+            {src:"images/pfsense-rebuild-verify.png", cap:"The check that actually proves it, run from the domain controller rather than the firewall. Source .100 reaching .1 at 0 ms means the LAN leg is genuinely on the lab segment — something the console alone cannot tell you."},
+          ],
         }},
       { title: "Blocking ICMP outbound", desc: "My first firewall rule",
         doc: {
@@ -685,17 +697,26 @@ const data = {
           why:"Two causes stacked. The current installer is a net-installer — a small boot image that downloads the actual build from the vendor, so it cannot proceed without working internet. And the VM had been created with only one network adapter, on a host-only network, which is isolated by definition and has no path out. The error was accurate and the fix was nowhere near where the message pointed.",
           fix:["Added the second network adapter the VM should have had from the start — a firewall needs two interfaces regardless","Set both adapters to NAT temporarily so that whichever interface the installer picked had internet","Moved the second adapter back to the host-only network immediately after the install, before assigning interfaces","That last step is the one worth flagging: an adapter switched temporarily and left switched is its own entry in this log, and it cost me twenty minutes the first time"],
           ref:["Related: the interface assignment prompt offers auto-detection, which asks you to unplug and replug a cable and watches for the link to bounce. In a VM there are no cables and both links are always up, so it has nothing to detect and times out. Type the device names instead."],
+          shots: [
+            {src:"images/pfsense-netinstaller-error.png", cap:"An accurate error pointing nowhere useful. The installer needs to download the build, the VM had one adapter, and that adapter was on an isolated host-only network. Nothing about 'verify your network settings' suggests the missing piece is a second network card."},
+          ],
         }},
       { title: "DHCP scope served nobody", desc:"One digit — 194 instead of 192",
         doc: {
           what:"The DHCP service was running, the scope showed Active, the console was green from top to bottom — and no client had ever received a lease from it.",
           why:"The scope had been created on 194.168.1.0/24 instead of 192.168.1.0/24. A DHCP server only answers requests on a subnet it holds a matching scope for, so with its own interface at 192.168.1.100 and its only scope on 194.168.1.x, nothing ever matched. The service ran flawlessly and did nothing. Worth noting the typo landed outside private space entirely — the RFC 1918 ranges are 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16, and 194.x is public address space allocated to RIPE, so had it ever issued leases they'd have been real internet addresses used privately. What made this hard to catch is the failure shape: every status indicator healthy, nothing logging an error, zero function. It also explains an earlier entry in this log — the client I'd 'fixed' with a static address was only ever a symptom of this.",
+          shots: [
+            {src:"images/dhcp-scope-wrong-subnet.png", cap:"The console reporting a healthy service. Scope present, state Active, nothing flagged — and the only thing wrong is the third character of the scope name. Nothing in this view will ever tell you that the scope doesn't match the server's own subnet."},
+          ],
           fix:["Compared the scope's ScopeId against the server's own IP address, which is where the mismatch is visible","Learned that ScopeId can't be edited — it IS the scope's identity, derived from the start range and subnet mask, so a scope on the wrong subnet has to be deleted and rebuilt rather than corrected","Removed the old scope and created a new one at 192.168.1.150–200, deliberately clear of the DC's static .100 so the pool can never collide with infrastructure","Set 003 Router, 006 DNS Servers and 015 DNS Domain Name at the scope level rather than the server level — no difference with one subnet, but it's the habit that scales","Took the practice of reading the range back before clicking Next"],
         }},
       { title: "ipconfig /release refused", desc:"The adapter was static, not DHCP",
         doc: {
           what:"Both ipconfig /release and ipconfig /renew returned 'The operation failed as no adapter is in the state permissible for this operation.'",
           why:"The client's adapter had been set to a static address months earlier as a workaround while DHCP was broken, and the static outlived the problem it was working around. You can't release a lease that was never issued — and that's precisely what the error says. It describes the adapter's state, not a network fault, which is why reading it literally is faster than troubleshooting connectivity. Two details in ipconfig confirmed it before anything was changed: the address sat outside the DHCP pool, and the connection-specific DNS suffix was blank where a DHCP client would have picked up lab.local from option 015.",
+          shots: [
+            {src:"images/dhcp-release-refused.png", cap:"The error is the diagnosis. 'No adapter is in the state permissible for this operation' describes the adapter's configuration, not the network — there is no lease to release because the address was never leased. The .50 above it confirms it: the pool starts at .150."},
+          ],
           fix:["Read the error as a state problem rather than a connectivity one","Checked the address against the scope range — .50 against a pool of .150–.200, so no DHCP server had issued it","Set the adapter back to obtain both its address and its DNS server automatically","Confirmed the lease by the DNS suffix: lab.local appearing is proof the scope options came from the domain controller","Took the wider lesson that a temporary workaround nobody records becomes a permanent mystery"],
         }},
       { title: "Switch IP conflict", desc:"Router & switch both at .0.1",
