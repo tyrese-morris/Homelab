@@ -60,6 +60,37 @@ untrusted side, LAN acting as the gateway for everything in the lab.
 **What this demonstrates:** stateful vs stateless inspection, top-down rule processing
 where first match wins, outbound NAT, RFC 1918 addressing, and firewall log analysis.
 
+### Rebuilt — separating the firewall from identity
+
+The first build had pfSense running DHCP and DNS for the lab. That's reasonable for a home
+network and wrong for an Active Directory environment, and **three of the four pfSense
+entries in the troubleshooting log below trace back to that single decision**: clients handed
+the firewall's address for DNS and unable to find the domain, a DHCP pool overlapping the
+domain controller's static address, and two DHCP servers answering on the same wire.
+
+The deeper problem was that it made the firewall a dependency of authentication. When
+pfSense misbehaved, the domain went with it.
+
+The rebuild separates the two:
+
+```
+Internet
+   │
+pfSense WAN ── NAT network
+pfSense LAN ── 192.168.1.1 ── host-only network
+                                  │
+                                  ├─ domain controller (static)
+                                  │    ├── DNS  — authoritative for lab.local
+                                  │    └── DHCP — scope clear of the static range
+                                  │
+                                  └─ Windows 11 client (DHCP from the DC)
+```
+
+**The firewall routes and filters. The domain controller owns the services Active Directory
+depends on.** The DC and client now sit on the same segment and talk directly, so switching
+the firewall off costs internet access and nothing else — which is the property the first
+build never had, and the one that let a firewall problem block unrelated labs.
+
 \---
 
 ## Packet analysis — Wireshark
@@ -265,6 +296,8 @@ wrong, nothing in the domain can authenticate.
 |Problem|Root cause|
 |-|-|
 |DHCP service running and scope Active, but no client ever leased|Scope built on `194.168.1.0` instead of `192.168.1.0` — it never matched the server's own interface|
+|Firewall installer halted: "cannot reach the Netgate servers"|A net-installer on a VM with one adapter, on an isolated host-only network|
+|Domain authenticating normally while every AD-created file was timestamped three hours early|Both DC and client drifting together — Kerberos compares the two machines to each other, not to real time|
 |`ipconfig /release` returned "no adapter is in the state permissible"|The adapter was statically configured; there was no lease to release|
 |Workstation lost internet after VLAN config|Port moved to a VLAN the router didn't route — segmentation working exactly as designed|
 |VM pulled an address from the wrong range, no gateway|Two DHCP servers on one segment; the hypervisor's own service answered first|

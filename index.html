@@ -419,6 +419,26 @@ const data = {
           why: "This is the part that catches people. Adding Finance-Users to a folder doesn't secure it — the inherited Users entry is still sitting there granting read to the whole company. The actual security step is removing that entry, which means breaking inheritance first. Adding a permission and removing one are different operations, and only the second one locks anything down.",
           setup: ["Properties → Security → Advanced → Disable inheritance","Choose 'Convert inherited permissions into explicit permissions' so you don't lock yourself out","Remove the Users entry","Leave SYSTEM and Administrators at Full Control — removing those is how people lose access to their own folders","Add the department group with Modify"],
         }},
+      { title: "Home folders", desc: "The H: drive, and how it builds itself",
+        doc: {
+          what: "A hidden share called Homes$ on the domain controller, with each user's personal folder created automatically and mapped as H: when they sign in. The path is set per account on the Profile tab.",
+          why: "Home folders exist because files on a server get backed up and files on a user's C: drive don't. They also follow the person to any domain machine, and they survive hardware failure entirely — the laptop dies, you hand over a new one, the files are already there. In a company this is the H: drive, and 'my H drive is missing' is one of the most common tickets there is. The answer to that one is usually not the drive at all: a mapped drive is a pointer to a server, so no path to the server means no drive, which is why it disappears off the network and comes back on VPN. Worth knowing the current direction too — most organizations have moved to OneDrive with Known Folder Move or to Folder Redirection, which do the same job without a mapped drive and work when disconnected. On-prem file servers persist in healthcare and government, so both are worth understanding.",
+          setup: [
+            "Created the folder and shared it as Homes$ — the dollar sign hides it from browsing, which is the usual convention for home directories so users aren't shown a share full of everyone's names",
+            "Share permission: Authenticated Users, Full Control — the outer gate, with NTFS doing the real work underneath",
+            "Disabled inheritance on the share root and converted to explicit permissions",
+            "SYSTEM and Domain Admins: Full Control, applying to this folder, subfolders and files",
+            "Authenticated Users: traverse folder, list folder, read attributes and create folders — and critically, 'Applies to: This folder only'",
+            "Set the path on the user account as \\\\SERVER\\Homes$\\%username%, which creates the folder and its permissions automatically",
+          ],
+          fix: ["Folder never created — the account setting the path lacked create rights on the share, or the path was mistyped. Active Directory fails silently here, with no warning.","User can see everyone else's folders — the root NTFS permissions were applied to subfolders and files instead of 'this folder only'. One dropdown.","H: doesn't map — there is no path to the server. Off the network, VPN down, or name resolution failing. The drive isn't broken, the route to it is.","Access denied on their own folder — the folder was created by hand before the account existed, so AD never applied its automatic permissions. Let AD create the folder; pre-creating it manually is the most common cause of a broken home drive."],
+          ref: [
+            "Create folders at the root is what allows the folder to be made at all",
+            "'This folder only' is what stops users reading each other's folders",
+            "AD grants each user Full Control of their own folder automatically — no per-user permissions are ever set by hand",
+            "Home folder holds files and is a drive letter; a roaming profile holds Windows settings and becomes your profile. Different things.",
+          ],
+        }},
       { title: "The access token", desc: "Why group changes need a logoff",
         doc: {
           what: "At sign-in, Windows builds an access token containing the user's SID and the SID of every group they belong to at that moment. The token is a snapshot and never updates during the session.",
@@ -447,6 +467,26 @@ const data = {
           what: "The bread-and-butter AD operations I've drilled in this lab — the exact tasks that make up most account-related tickets.",
           why: "These are the moves I want to be automatic, not something I look up: they're the fastest way to be useful on a real support queue from day one.",
           setup: ["Reset a password and require a change at next logon","Unlock a locked-out account from the Account tab","Disable and re-enable accounts","Move users between OUs","Add users to security groups"],
+        }},
+      { title: "User templates", desc: "Three ways to provision, and when each wins",
+        doc: {
+          what: "A disabled user object, _TEMPLATE_Finance, pre-filled with the department, company, security group membership and home folder path common to every Finance account. New users are created by copying it.",
+          why: "Templates solve the problem that people forget things. Create an account by hand and you'll remember the password; you might forget the department field and you'll probably forget one of the security groups, which surfaces three weeks later as an access ticket nobody can explain. A template means those are already there, with nothing to remember. The template stays disabled on purpose — an enabled account with real group memberships and no human owner is exactly the orphaned privileged access an access review looks for.",
+          setup: [
+            "Created the user with an underscore prefix so it sorts to the top, away from real accounts",
+            "Ticked 'Account is disabled' on the wizard's second page and set the password never to expire",
+            "Filled the Organization tab with department and company, and added the security group under Member Of",
+            "Set the home folder on the Profile tab using the %username% variable",
+            "To provision: right-click the template → Copy, then enter the new name and password",
+          ],
+          fix: ["%username% does not stay as a variable — ADUC expands it against the current account the moment you click Apply, so the template's own path is stored literally","The copy operation substitutes the new user's name into the home directory and profile paths, so copying still produces a per-user path","Putting %username% back on the template afterwards just expands again; the expanded path is the correct stored state","Side effect worth knowing: setting the path on the template creates a home folder for the template itself, which can be deleted once copying is confirmed to work"],
+          ref: [
+            "Template — one-off hires, no maintenance, anyone can use it. A snapshot: later changes do not reach users already created.",
+            "Script — bulk, repeatable, auditable, handles errors. Someone has to maintain it.",
+            "CSVDE — imports from an external system. Create only: cannot modify, cannot set passwords, so accounts arrive disabled.",
+            "LDIFDE — same as CSVDE but can also modify existing objects, and the schema.",
+            "The distinction that matters: a template is a snapshot, a group is a live link. Templates provision, groups control access.",
+          ],
         }},
     ]},
     { title: "VLAN lab", desc: "Segmenting the switch · 802.1Q", color: "var(--cyan)",
@@ -555,10 +595,29 @@ const data = {
         doc: {
           what: "The VM has two virtual NICs: one on NAT that becomes the WAN interface facing the untrusted side, and one on a host-only network that becomes the LAN interface for my lab VMs.",
           why: "A firewall by definition sits between two networks — with only one interface there's nothing to separate and nothing to filter. Getting this right is what makes the whole thing work: traffic enters one side, gets inspected against the rules, and either passes to the other side or doesn't.",
-          setup: ["Built the VM as FreeBSD 64-bit with 2GB RAM and a 20GB disk","Adapter 1 on NAT → became WAN, pulling an address by DHCP","Adapter 2 on host-only → became LAN at 192.168.1.1/24, static, with DHCP serving the lab","Chose ZFS with a GPT partition scheme and installed the free CE edition","Disconnected the ISO before rebooting, then ran the setup wizard over HTTPS from a LAN-side VM"],
+          setup: ["Built the VM as FreeBSD 64-bit with 2GB RAM and a 20GB disk","Adapter 1 on NAT → became WAN (em0), pulling an address by DHCP","Adapter 2 on a host-only network → became LAN (em1) at 192.168.1.1/24, static","Answered no to 'enable the DHCP server on LAN' — the domain controller owns DHCP, not the firewall","Chose Auto (ZFS) and installed the free CE edition","Disconnected the ISO before rebooting, then ran the setup wizard over HTTPS from the domain controller"],
           shots: [
             {src:"images/pfsense-lan-config.png", cap:"LAN interface set static with its own DHCP range — the lab's gateway, configured during install."},
             {src:"images/pfsense-console-interfaces.png", cap:"Both interfaces up after boot: WAN holding a DHCP address from the untrusted side, LAN serving the lab network."},
+          ],
+        }},
+      { title: "Rebuilt: firewall vs identity", desc: "The design decision, made twice",
+        doc: {
+          what: "The second build of this firewall, after the first one became unrecoverable. The architecture changed: pfSense is the gateway and nothing else, and the domain controller owns DHCP and DNS.",
+          why: "The first build had pfSense running DHCP and DNS for the lab, which is sensible for a home network and wrong for an AD environment. Three of the four pfSense entries in my troubleshooting log trace back to that one decision — clients handed the firewall's address for DNS and failing to find the domain, a DHCP pool overlapping the DC's static address, and two DHCP servers answering on the same wire. Worse, it made the firewall a dependency of authentication: when pfSense misbehaved, the domain went with it, and labs that had nothing to do with networking stopped working. The rebuild separates the two. The firewall routes and filters; the domain controller owns the services Active Directory depends on. Now the DC and the client sit on the same segment and talk directly, so switching pfSense off costs me internet and nothing else. That's the property the first build never had.",
+          setup: [
+            "Disabled VMware's own DHCP service on the host-only network in Virtual Network Editor — that service competing with pfSense was the original rogue-DHCP problem",
+            "Set the host-only network's subnet to match the lab's addressing, rather than leaving VMware's default",
+            "Built the VM with two adapters before first boot — a firewall with one interface has nothing to separate",
+            "Assigned interfaces by typing the device names rather than using auto-detection, which cannot work in a VM",
+            "Set the LAN statically as the lab's gateway and explicitly declined the DHCP server prompt",
+            "Pointed the DHCP scope's 006 DNS option at the domain controller, never at the firewall",
+            "Verified from the DC rather than from the console: the LAN address displays correctly whatever virtual network the adapter is on, so only a ping from inside the lab proves it is actually connected to it",
+          ],
+          ref: [
+            "The separation in one line: the firewall routes, the domain controller owns identity",
+            "Test it by switching the firewall off — the domain should keep working",
+            "Scope option 006 points at the DC; AD's service records exist nowhere else",
           ],
         }},
       { title: "Blocking ICMP outbound", desc: "My first firewall rule",
@@ -620,6 +679,13 @@ const data = {
         why: "Troubleshooting was the highest-weighted domain on the Network+ exam, and honestly it's where the real learning happened. A smooth build teaches you the steps; a broken one teaches you the system. I keep this log so every problem becomes a pattern I'll recognize next time — and a few of these I came back to later and found a deeper root cause than the one I first wrote down.",
       },
       children: [
+      { title: "Installer couldn't reach the internet", desc:"A net-installer on an isolated network",
+        doc: {
+          what:"Rebuilding the firewall, the installer stopped with 'Cannot reach the Netgate Servers, please verify your network settings' and shut itself down.",
+          why:"Two causes stacked. The current installer is a net-installer — a small boot image that downloads the actual build from the vendor, so it cannot proceed without working internet. And the VM had been created with only one network adapter, on a host-only network, which is isolated by definition and has no path out. The error was accurate and the fix was nowhere near where the message pointed.",
+          fix:["Added the second network adapter the VM should have had from the start — a firewall needs two interfaces regardless","Set both adapters to NAT temporarily so that whichever interface the installer picked had internet","Moved the second adapter back to the host-only network immediately after the install, before assigning interfaces","That last step is the one worth flagging: an adapter switched temporarily and left switched is its own entry in this log, and it cost me twenty minutes the first time"],
+          ref:["Related: the interface assignment prompt offers auto-detection, which asks you to unplug and replug a cable and watches for the link to bounce. In a VM there are no cables and both links are always up, so it has nothing to detect and times out. Type the device names instead."],
+        }},
       { title: "DHCP scope served nobody", desc:"One digit — 194 instead of 192",
         doc: {
           what:"The DHCP service was running, the scope showed Active, the console was green from top to bottom — and no client had ever received a lease from it.",
@@ -660,6 +726,7 @@ const data = {
           what:"Group Policy failed on the client with 'Windows attempted to read the file \\\\lab.local\\sysvol\\...\\gpt.ini and was not successful.' Shares were unreachable. Every network layer tested clean.",
           why:"The domain controller's clock had drifted about three hours from real time after repeated VM power cycles. Kerberos rejects any authentication where the two machines disagree by more than five minutes — it's replay-attack protection and there's no grace period or warning. So the client could resolve names, reach the server, and open a TCP connection, but every attempt to authenticate was refused. A domain controller is the authoritative time source for the whole domain, so when its clock is wrong, nothing in the domain can authenticate.",
           fix:["Ruled out the network first: Test-NetConnection to the DC on port 445 returned True, so SMB was reachable","Ruled out the firewall: Get-NetConnectionProfile showed DomainAuthenticated, so file sharing wasn't being blocked","That left authentication, and the clock was visibly wrong on the DC's own taskbar","Corrected the time on the DC, ran w32tm /resync on the client, and Group Policy applied immediately","Enabled 'Synchronize guest time with host' in VMware Tools on each VM so suspend and resume stops causing drift"],
+          ref:["A later observation worth keeping: I caught the same drift a second time, by noticing that files created by Active Directory carried timestamps three hours behind real time — and the domain was authenticating perfectly anyway.","The reason is that Kerberos compares the two machines against each other, not against reality. The client takes its time from the domain controller, so both were three hours wrong, consistently, and they agreed.","Consistent-but-wrong is a latent failure rather than a healthy state. It breaks the moment anything desyncs them — one VM time-syncing to its host and not the other, a newly joined machine, or a certificate with a validity window.","Check with w32tm /query /status and compare it against a clock outside the lab, because nothing inside the domain will tell you."],
         }},
       { title: "Folder had permissions, no share", desc:"NTFS done, sharing skipped",
         doc: {
