@@ -235,12 +235,18 @@ const data = {
           what: "An AC1750 dual-band gigabit router that I set up as the dedicated router for the lab segment.",
           why: "I chose the Archer A7 on purpose: it has a Qualcomm chipset with solid OpenWrt and DD-WRT support, so down the road I can flash it and practice advanced routing on real hardware. For now it gives me hands-on NAT, DHCP, and routing on a device I fully control.",
           setup: ["Connected the ISP gateway's LAN port to the Archer A7's WAN port","Logged into the admin interface at 192.168.0.1 and ran Quick Setup","Skipped MAC address cloning and set my own Wi-Fi credentials","Verified the WAN status showed Connected with a Dynamic IP"],
+          shots: [
+            {src:"images/hw-router-archer-a7.jpg", cap:"The lab router. Power, both radios and the internet indicator lit, with the WAN uplink in blue running to the ISP gateway. Everything behind this device is mine to break."},
+          ],
         }},
       { title: "TP-Link TL-SG108E", desc: "Managed switch · 192.168.0.2",
         doc: {
           what: "An 8-port gigabit managed switch that supports VLANs, QoS, port mirroring, and link aggregation.",
           why: "I went managed instead of unmanaged because an unmanaged switch just passes traffic — there's nothing to learn from it. A managed switch lets me segment with VLANs, mirror ports for packet captures, and work with the exact features Network+ tests. I also moved its management IP to .2, because both the router and the switch ship at 192.168.0.1, and two devices on one address means you can't reliably reach either.",
           setup: ["Connected a router LAN port to switch port 1","Logged in with the default credentials at the default IP","Changed the management IP to 192.168.0.2 under System → IP Setting","Saved and reconnected at the new address"],
+          shots: [
+            {src:"images/hw-switch-tl-sg108e.jpg", cap:"The managed switch, with the uplink to the router in port 1 and a host on port 5. Link lights on both. This is the hardware the 802.1Q VLAN work runs on — port 1 carries the tagged trunk, and the rest are untagged access ports with their own PVIDs."},
+          ],
         }},
       { title: "USB gigabit NIC", desc: "USB 3.0 Ethernet adapter",
         doc: {
