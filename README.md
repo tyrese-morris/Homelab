@@ -207,6 +207,21 @@ keeps static infrastructure clear of the dynamic pool, OU hierarchy, and GPO sco
 Beyond making a single setting apply: how policies resolve when several touch the same
 thing, and how to prove which one won.
 
+**Blocking removable storage**, linked at the domain — the first policy here built for a
+security reason rather than to watch Group Policy work. A USB stick is the simplest
+exfiltration path there is, and in healthcare PHI on a lost thumb drive is a reportable
+breach, so this is close to a mandatory control.
+
+```
+Computer Configuration → Policies → Administrative Templates → System
+  → Removable Storage Access → All Removable Storage classes: Deny all access
+```
+
+Worth knowing what it does and doesn't do: this blocks **access**, not installation. The
+device still installs and appears in Device Manager — the user just can't read or write to
+it. Stopping the driver loading at all is **Device Installation Restrictions**, a separate
+control, and real deployments often use both.
+
 Policies process **Local → Site → Domain → OU**, parent OU before child, and the last one
 processed overwrites the rest — so the GPO closest to the object wins. Within a single
 container, link order 1 has the *highest* precedence, because the list is processed in

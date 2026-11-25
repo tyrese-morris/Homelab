@@ -406,6 +406,25 @@ const data = {
             {src:"images/gpresult-no-user-policy.png", cap:"The user half of a report with nothing in it. The distinguished name at the top is the whole answer — CN=Users is a container, so no OU-linked policy could ever reach this account."},
           ],
         }},
+      { title: "Blocking removable storage", desc: "A real security control, domain-wide",
+        doc: {
+          what: "A GPO linked at the domain that denies access to every removable storage class, so USB drives are unusable on any machine in the domain.",
+          why: "This is the first policy I've built that exists for a reason other than seeing Group Policy work. A USB stick is the simplest data exfiltration path there is and one of the easiest ways to bring malware in, so blocking removable storage is a standard control — and in healthcare it's close to mandatory, because protected health information on a lost thumb drive is a reportable breach rather than an inconvenience. It also moved my Group Policy work from 'make a wallpaper appear' to a setting with an actual security argument behind it, which is a different kind of thing to be able to explain.",
+          setup: [
+            "Computer Configuration → Policies → Administrative Templates → System → Removable Storage Access",
+            "Enabled 'All Removable Storage classes: Deny all access'",
+            "Linked at the domain so it reaches every machine, rather than at a single OU",
+            "Tested from the client: the drive still appears, and opening it returns access denied",
+          ],
+          ref: [
+            "This blocks ACCESS, not installation — the device still installs and shows in Device Manager, the user just can't read or write to it",
+            "The other half of the control is Device Installation Restrictions, which stops the driver loading at all; real deployments often use both",
+            "There is a parallel User Configuration version of the same node: the computer one follows the machine, the user one follows the person",
+            "Computer Configuration applies at boot, so a reboot is what proves it, not gpupdate alone",
+            "Linked at the domain means domain controllers get it too, since they sit under the domain — fine for this control, worth checking for others",
+            "In production someone always needs an exception, which is what security filtering or a separate OU is for",
+          ],
+        }},
     ]},
     { title: "Shares & permissions", desc: "Two layers, most restrictive wins", color: "var(--slate)",
       doc: {
